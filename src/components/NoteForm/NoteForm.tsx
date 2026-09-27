@@ -1,63 +1,64 @@
-import { ErrorMessage, Field, Form, Formik } from 'formik';
-import * as Yup from 'yup';
-import type { CreateNoteParams } from '../../services/noteService';
-import type { NoteTag } from '../../types/note';
-import css from './NoteForm.module.css';
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ErrorMessage, Field, Form, Formik } from "formik";
+import * as Yup from "yup";
+import { createNote, type CreateNoteParams } from "../../services/noteService";
+import type { NoteTag } from "../../types/note";
+import css from "./NoteForm.module.css";
 
 interface NoteFormProps {
-  onSubmit: (values: CreateNoteParams) => Promise<void>;
   onCancel: () => void;
-  isSubmitting: boolean;
 }
 
-const noteTags: NoteTag[] = [
-  'Todo',
-  'Work',
-  'Personal',
-  'Meeting',
-  'Shopping',
-];
+const noteTags: NoteTag[] = ["Todo", "Work", "Personal", "Meeting", "Shopping"];
 
 const initialValues: CreateNoteParams = {
-  title: '',
-  content: '',
-  tag: 'Todo',
+  title: "",
+  content: "",
+  tag: "Todo",
 };
 
 const validationSchema: Yup.ObjectSchema<CreateNoteParams> = Yup.object({
   title: Yup.string()
-    .min(3, 'Title must be at least 3 characters')
-    .max(50, 'Title must be at most 50 characters')
-    .required('Title is required'),
+    .min(3, "Title must be at least 3 characters")
+    .max(50, "Title must be at most 50 characters")
+    .required("Title is required"),
   content: Yup.string()
-    .max(500, 'Content must be at most 500 characters')
+    .max(500, "Content must be at most 500 characters")
     .defined(),
   tag: Yup.mixed<NoteTag>()
-    .oneOf(noteTags, 'Select a valid tag')
-    .required('Tag is required'),
+    .oneOf(noteTags, "Select a valid tag")
+    .required("Tag is required"),
 });
 
-function NoteForm({ onSubmit, onCancel, isSubmitting }: NoteFormProps) {
+function NoteForm({ onCancel }: NoteFormProps) {
+  const queryClient = useQueryClient();
+
+  const createMutation = useMutation({
+    mutationFn: createNote,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["notes"] });
+      onCancel();
+    },
+  });
+
   return (
     <Formik
       initialValues={initialValues}
       validationSchema={validationSchema}
       validateOnMount
       onSubmit={async (values, actions) => {
-        await onSubmit(values);
-        actions.setSubmitting(false);
+        try {
+          await createMutation.mutateAsync(values);
+        } finally {
+          actions.setSubmitting(false);
+        }
       }}
     >
-      {({ dirty, isSubmitting: isFormikSubmitting, isValid }) => (
+      {({ dirty, isSubmitting, isValid }) => (
         <Form className={css.form}>
           <div className={css.formGroup}>
             <label htmlFor="title">Title</label>
-            <Field
-              id="title"
-              type="text"
-              name="title"
-              className={css.input}
-            />
+            <Field id="title" type="text" name="title" className={css.input} />
             <ErrorMessage name="title" component="span" className={css.error} />
           </div>
 
@@ -102,10 +103,10 @@ function NoteForm({ onSubmit, onCancel, isSubmitting }: NoteFormProps) {
               type="submit"
               className={css.submitButton}
               disabled={
-                isSubmitting || isFormikSubmitting || !dirty || !isValid
+                createMutation.isPending || isSubmitting || !dirty || !isValid
               }
             >
-              {isSubmitting ? 'Creating...' : 'Create note'}
+              {createMutation.isPending ? "Creating..." : "Create note"}
             </button>
           </div>
         </Form>
